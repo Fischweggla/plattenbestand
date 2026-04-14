@@ -530,10 +530,15 @@ def plan_view():
     """Wochenansicht Beschichtungsplan."""
     from datetime import timedelta
 
+    # Nur Standorte mit Beschichtung (Birkach + Dinkelsbühl)
+    plan_locations = Location.query.filter(
+        Location.code.in_(PlanEntry.PLAN_LOCATION_CODES)
+    ).all()
+
     if current_user.role == 'admin':
-        locations = Location.query.all()
+        locations = plan_locations
     else:
-        locations = [current_user.location] if current_user.location else []
+        locations = [l for l in plan_locations if l.id == current_user.location_id]
 
     location_id = request.args.get('location', type=int)
     week_offset = request.args.get('week', 0, type=int)
@@ -585,7 +590,7 @@ def plan_view():
     # Kalenderwochen-Infos
     kw = monday.isocalendar()[1]
 
-    can_edit_plan = current_user.role in ('bereichsleiter', 'admin')
+    can_edit_plan = current_user.role in ('beschichter', 'bereichsleiter', 'admin')
 
     material_types = MaterialType.query.order_by(MaterialType.sort_order).all()
 
@@ -605,9 +610,9 @@ def plan_view():
 @app.route('/plan/add', methods=['POST'])
 @login_required
 def plan_add():
-    """Eintrag zum Beschichtungsplan hinzufügen."""
-    if current_user.role not in ('bereichsleiter', 'admin'):
-        flash('Nur Bereichsleiter und Admins dürfen den Plan bearbeiten.', 'danger')
+    """Eintrag zum Beschichtungsplan hinzufügen (1 Produkt pro Tag)."""
+    if current_user.role not in ('beschichter', 'bereichsleiter', 'admin'):
+        flash('Keine Berechtigung den Plan zu bearbeiten.', 'danger')
         return redirect(url_for('plan_view'))
 
     plan_date = request.form.get('date')
@@ -631,6 +636,12 @@ def plan_add():
         flash(f'{d.strftime("%d.%m.%Y")} ist ein Feiertag.', 'warning')
         return redirect(url_for('plan_view', week=week_offset, location=location_id))
 
+    # Prüfen ob bereits ein Produkt für diesen Tag+Standort existiert
+    existing = PlanEntry.query.filter_by(date=d, location_id=location_id).first()
+    if existing:
+        flash(f'Für diesen Tag ist bereits ein Produkt eingeplant. Bitte zuerst den bestehenden Eintrag löschen.', 'warning')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
     entry = PlanEntry(
         date=d,
         location_id=location_id,
@@ -644,14 +655,14 @@ def plan_add():
     log_action('create', 'plan', entry.id, {
         'date': d.isoformat(), 'product_id': product_id, 'quantity': quantity})
 
-    flash('Eintrag hinzugefügt.', 'success')
+    flash('Produkt eingeplant.', 'success')
     return redirect(url_for('plan_view', week=week_offset, location=location_id))
 
 
 @app.route('/plan/delete/<int:entry_id>', methods=['POST'])
 @login_required
 def plan_delete(entry_id):
-    if current_user.role not in ('bereichsleiter', 'admin'):
+    if current_user.role not in ('beschichter', 'bereichsleiter', 'admin'):
         flash('Keine Berechtigung.', 'danger')
         return redirect(url_for('plan_view'))
 
@@ -694,15 +705,14 @@ def plan_products():
 @app.route('/plan/add-low-stock', methods=['POST'])
 @login_required
 def plan_add_low_stock():
-    """Niedrigste Bestände direkt in den Plan übernehmen."""
-    if current_user.role not in ('bereichsleiter', 'admin'):
+    """Produkt mit niedrigstem Bestand direkt in den Plan übernehmen."""
+    if current_user.role not in ('beschichter', 'bereichsleiter', 'admin'):
         flash('Keine Berechtigung.', 'danger')
         return redirect(url_for('plan_view'))
 
     plan_date = request.form.get('date')
     location_id = request.form.get('location_id', type=int)
     week_offset = request.form.get('week_offset', 0, type=int)
-    count = request.form.get('count', 5, type=int)
 
     try:
         d = dt_date.fromisoformat(plan_date)
@@ -714,7 +724,13 @@ def plan_add_low_stock():
         flash('Kann keine Einträge an Feiertagen anlegen.', 'warning')
         return redirect(url_for('plan_view', week=week_offset, location=location_id))
 
-    # Niedrigste Bestände finden
+    # Prüfen ob Tag bereits belegt
+    existing = PlanEntry.query.filter_by(date=d, location_id=location_id).first()
+    if existing:
+        flash('Für diesen Tag ist bereits ein Produkt eingeplant.', 'warning')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+    # Niedrigsten Bestand finden (1 Produkt)
     latest = db.session.query(db.func.max(Inventory.date)).scalar()
     if not latest:
         flash('Keine Bestandsdaten vorhanden.', 'warning')
@@ -735,24 +751,27 @@ def plan_add_low_stock():
         .group_by(Product.id)
         .having(db.func.sum(Inventory.summe) >= 0)
         .order_by('total')
-        .limit(count)
+        .limit(1)
         .all()
     )
 
-    added = 0
-    for item in low_items:
-        entry = PlanEntry(
-            date=d, location_id=location_id,
-            product_id=item.id, quantity=0,
-            notes=f'Niedriger Bestand ({item.total} Stk.)',
-            created_by=current_user.id,
-        )
-        db.session.add(entry)
-        added += 1
+    if not low_items:
+        flash('Kein Produkt mit Bestand gefunden.', 'warning')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
 
+    item = low_items[0]
+    entry = PlanEntry(
+        date=d, location_id=location_id,
+        product_id=item.id, quantity=0,
+        notes=f'Niedriger Bestand ({item.total} Stk.)',
+        created_by=current_user.id,
+    )
+    db.session.add(entry)
     db.session.commit()
-    log_action('create', 'plan', None, {'action': 'low_stock', 'count': added, 'date': d.isoformat()})
-    flash(f'{added} Produkte mit niedrigstem Bestand eingeplant.', 'success')
+
+    product = db.session.get(Product, item.id)
+    log_action('create', 'plan', entry.id, {'action': 'low_stock', 'date': d.isoformat()})
+    flash(f'Produkt mit niedrigstem Bestand eingeplant: {product.material_type.name} {product.label}', 'success')
     return redirect(url_for('plan_view', week=week_offset, location=location_id))
 
 

@@ -131,7 +131,7 @@ class Inventory(db.Model):
 
 
 class PlanEntry(db.Model):
-    """Ein Eintrag im Beschichtungsplan: Was soll an welchem Tag beschichtet werden."""
+    """Ein Eintrag im Beschichtungsplan: Ein Produkt pro Tag und Standort."""
     __tablename__ = 'plan_entries'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -148,6 +148,13 @@ class PlanEntry(db.Model):
     location = db.relationship('Location')
     product = db.relationship('Product')
     creator = db.relationship('User')
+
+    __table_args__ = (
+        db.UniqueConstraint('date', 'location_id', name='uq_plan_day_location'),
+    )
+
+    # Nur Birkach (99) und Dinkelsbühl (96) haben Beschichtung
+    PLAN_LOCATION_CODES = ('99', '96')
 
 
 class AuditLog(db.Model):

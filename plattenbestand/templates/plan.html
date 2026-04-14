@@ -189,8 +189,8 @@
                 </div>
                 {% endfor %}
 
-                {% if can_edit_plan %}
-                <button class="day-add" onclick="openAddModal('{{ day.date.isoformat() }}', '{{ day.weekday }}, {{ day.date.strftime("%d.%m.%Y") }}')" title="Eintrag hinzufügen">+</button>
+                {% if can_edit_plan and not entries.get(day.date) %}
+                <button class="day-add" onclick="openAddModal('{{ day.date.isoformat() }}', '{{ day.weekday }}, {{ day.date.strftime("%d.%m.%Y") }}')" title="Produkt einplanen">+</button>
                 {% endif %}
             {% endif %}
         </div>
@@ -201,24 +201,19 @@
 {% if can_edit_plan %}
 <!-- Low-Stock Schnelleingabe -->
 <div class="low-stock-bar">
-    <h4>Niedrigste Bestände einplanen</h4>
+    <h4>Produkt mit niedrigstem Bestand einplanen</h4>
     <form method="POST" action="{{ url_for('plan_add_low_stock') }}" class="d-flex gap-2 align-center" style="flex-wrap: wrap;">
         <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
         <input type="hidden" name="location_id" value="{{ selected_location }}">
         <input type="hidden" name="week_offset" value="{{ week_offset }}">
         <select name="date" class="form-control" style="width: auto;" required>
             {% for day in week_days %}
-            {% if not day.is_holiday %}
+            {% if not day.is_holiday and not entries.get(day.date) %}
             <option value="{{ day.date.isoformat() }}">{{ day.weekday }}, {{ day.date.strftime('%d.%m.') }}</option>
             {% endif %}
             {% endfor %}
         </select>
-        <select name="count" class="form-control" style="width: auto;">
-            <option value="3">Top 3</option>
-            <option value="5" selected>Top 5</option>
-            <option value="10">Top 10</option>
-        </select>
-        <span style="font-size: 13px; color: #666;">Produkte mit niedrigstem Bestand</span>
+        <span style="font-size: 13px; color: #666;">Produkt mit niedrigstem Bestand automatisch einplanen</span>
         <button type="submit" class="btn btn-primary btn-sm" style="background: var(--ibe-orange);">Einplanen</button>
     </form>
 </div>
