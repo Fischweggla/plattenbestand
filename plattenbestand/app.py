@@ -683,11 +683,12 @@ def plan_delete(entry_id):
 @app.route('/plan/products')
 @login_required
 def plan_products():
-    """JSON: Produkte für Dropdown, optional gefiltert nach Material."""
+    """JSON: Produkte für Dropdown, nur beschichtete Materialarten."""
     material_id = request.args.get('material', type=int)
     query = (
         db.session.query(Product, MaterialType)
         .join(MaterialType, Product.material_type_id == MaterialType.id)
+        .filter(~MaterialType.name.ilike('unbeschichtet%'))
         .order_by(MaterialType.sort_order, Product.length_mm, Product.strength_mm)
     )
     if material_id:
@@ -742,7 +743,9 @@ def plan_add_low_stock():
             db.func.sum(Inventory.summe).label('total'),
         )
         .join(Product, Inventory.product_id == Product.id)
+        .join(MaterialType, Product.material_type_id == MaterialType.id)
         .filter(Inventory.date == latest)
+        .filter(~MaterialType.name.ilike('unbeschichtet%'))
     )
     if location_id:
         low_q = low_q.filter(Inventory.location_id == location_id)

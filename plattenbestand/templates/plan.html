@@ -237,7 +237,9 @@
                     <select id="materialFilter" class="form-control" onchange="loadProducts()">
                         <option value="">Alle Materialarten</option>
                         {% for mt in material_types %}
+                        {% if not mt.name.startswith('Unbeschichtet') %}
                         <option value="{{ mt.id }}">{{ mt.name }}</option>
+                        {% endif %}
                         {% endfor %}
                     </select>
                 </div>
