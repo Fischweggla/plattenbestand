@@ -27,6 +27,9 @@
             <a href="{{ url_for('inventory_list') }}" class="{{ 'active' if request.endpoint == 'inventory_list' }}">
                 <span class="nav-icon">&#9776;</span> Bestandsliste
             </a>
+            <a href="{{ url_for('plan_view') }}" class="{{ 'active' if request.endpoint in ('plan_view',) }}">
+                <span class="nav-icon">&#9635;</span> Beschichtungsplan
+            </a>
             <a href="{{ url_for('reports') }}" class="{{ 'active' if request.endpoint == 'reports' }}">
                 <span class="nav-icon">&#9636;</span> Auswertungen
             </a>

@@ -130,6 +130,26 @@ class Inventory(db.Model):
     )
 
 
+class PlanEntry(db.Model):
+    """Ein Eintrag im Beschichtungsplan: Was soll an welchem Tag beschichtet werden."""
+    __tablename__ = 'plan_entries'
+
+    id = db.Column(db.Integer, primary_key=True)
+    date = db.Column(db.Date, nullable=False, index=True)
+    location_id = db.Column(db.Integer, db.ForeignKey('locations.id'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id'), nullable=False)
+    quantity = db.Column(db.Integer, nullable=False, default=0)
+    notes = db.Column(db.String(200))
+    created_by = db.Column(db.Integer, db.ForeignKey('users.id'))
+    created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
+    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
+                           onupdate=lambda: datetime.now(timezone.utc))
+
+    location = db.relationship('Location')
+    product = db.relationship('Product')
+    creator = db.relationship('User')
+
+
 class AuditLog(db.Model):
     __tablename__ = 'audit_log'
 

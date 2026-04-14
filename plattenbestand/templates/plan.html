@@ -1,0 +1,327 @@
+{% extends "base.html" %}
+{% block title %}Beschichtungsplan{% endblock %}
+{% block page_title %}Beschichtungsplan — KW {{ kw }}{% endblock %}
+
+{% block topbar_actions %}
+<span style="font-size: 14px; color: #666;">
+    {% if sel_location %}{{ sel_location.name }}{% endif %}
+    &middot; {{ monday.strftime('%d.%m.') }} – {{ (monday + import('datetime').timedelta(days=4)).strftime('%d.%m.%Y') if false else week_days[-1].date.strftime('%d.%m.%Y') }}
+</span>
+{% endblock %}
+
+{% block head %}
+<style>
+    .plan-nav {
+        display: flex; align-items: center; justify-content: space-between;
+        margin-bottom: 20px; gap: 12px; flex-wrap: wrap;
+    }
+    .plan-nav .week-nav { display: flex; align-items: center; gap: 8px; }
+    .plan-nav .week-nav a {
+        display: inline-flex; align-items: center; justify-content: center;
+        width: 36px; height: 36px; border-radius: 6px;
+        background: #fff; border: 1px solid var(--ibe-border);
+        color: var(--ibe-dark); text-decoration: none; font-size: 18px;
+        transition: all 0.15s;
+    }
+    .plan-nav .week-nav a:hover { background: var(--ibe-light-bg); border-color: var(--ibe-blue); }
+    .plan-nav .kw-label { font-size: 20px; font-weight: 700; color: var(--ibe-dark); min-width: 80px; text-align: center; }
+
+    .plan-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+
+    .day-col {
+        background: #fff;
+        border-radius: 8px;
+        border: 1px solid var(--ibe-border);
+        box-shadow: var(--ibe-card-shadow);
+        overflow: hidden;
+        min-height: 280px;
+        display: flex;
+        flex-direction: column;
+    }
+    .day-col.holiday {
+        opacity: 0.5;
+        background: #f0f0f0;
+    }
+    .day-col.today { border-color: var(--ibe-blue); border-width: 2px; }
+
+    .day-header {
+        padding: 12px 14px;
+        background: var(--ibe-dark);
+        color: #fff;
+        text-align: center;
+    }
+    .day-col.holiday .day-header { background: #999; }
+    .day-col.today .day-header { background: var(--ibe-blue); }
+    .day-header .day-name { font-size: 13px; font-weight: 400; opacity: 0.8; }
+    .day-header .day-date { font-size: 18px; font-weight: 700; }
+    .day-header .holiday-label {
+        font-size: 11px; margin-top: 4px;
+        background: rgba(255,255,255,0.2); padding: 2px 8px;
+        border-radius: 10px; display: inline-block;
+    }
+
+    .day-body { padding: 10px; flex: 1; }
+
+    .plan-entry {
+        background: var(--ibe-light-bg);
+        border: 1px solid var(--ibe-border);
+        border-left: 3px solid var(--ibe-blue);
+        border-radius: 6px;
+        padding: 8px 10px;
+        margin-bottom: 8px;
+        font-size: 12px;
+        position: relative;
+    }
+    .plan-entry .pe-material { font-weight: 600; color: var(--ibe-dark); font-size: 11px; }
+    .plan-entry .pe-dims { color: #666; font-size: 12px; margin-top: 2px; }
+    .plan-entry .pe-qty { font-weight: 700; color: var(--ibe-blue); }
+    .plan-entry .pe-notes { color: #999; font-size: 11px; font-style: italic; margin-top: 3px; }
+    .plan-entry .pe-delete {
+        position: absolute; top: 4px; right: 6px;
+        background: none; border: none; color: #ccc;
+        cursor: pointer; font-size: 16px; line-height: 1; padding: 2px;
+    }
+    .plan-entry .pe-delete:hover { color: #d9534f; }
+
+    .day-add {
+        display: block; width: 100%; padding: 8px;
+        background: none; border: 1px dashed var(--ibe-border);
+        border-radius: 6px; color: #bbb; font-size: 22px;
+        cursor: pointer; text-align: center; transition: all 0.15s;
+        font-family: 'Roboto', sans-serif;
+    }
+    .day-add:hover { border-color: var(--ibe-blue); color: var(--ibe-blue); background: rgba(89,133,194,0.04); }
+
+    /* Modal */
+    .modal-bg {
+        display: none; position: fixed; inset: 0;
+        background: rgba(0,50,75,0.4); z-index: 1000;
+        align-items: center; justify-content: center;
+    }
+    .modal-bg.open { display: flex; }
+    .modal-box {
+        background: #fff; border-radius: 10px;
+        box-shadow: 0 12px 40px rgba(0,0,0,0.2);
+        width: 100%; max-width: 520px; max-height: 90vh;
+        overflow-y: auto;
+    }
+    .modal-header {
+        padding: 18px 24px; border-bottom: 1px solid var(--ibe-border);
+        display: flex; justify-content: space-between; align-items: center;
+    }
+    .modal-header h3 { margin: 0; font-size: 16px; color: var(--ibe-dark); }
+    .modal-close {
+        background: none; border: none; font-size: 22px;
+        color: #999; cursor: pointer; padding: 0;
+    }
+    .modal-body { padding: 24px; }
+
+    .low-stock-bar {
+        margin-top: 16px; padding: 14px 16px;
+        background: rgba(224,130,45,0.06);
+        border: 1px solid rgba(224,130,45,0.2);
+        border-radius: 8px;
+    }
+    .low-stock-bar h4 { margin: 0 0 8px; font-size: 13px; color: var(--ibe-orange); }
+
+    @media (max-width: 900px) {
+        .plan-grid { grid-template-columns: 1fr; }
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Navigation -->
+<div class="plan-nav">
+    <div style="display: flex; align-items: center; gap: 16px; flex-wrap: wrap;">
+        {% if current_user.role == 'admin' %}
+        <select class="form-control" style="width: auto; min-width: 160px;"
+                onchange="window.location.href='/plan?location='+this.value+'&week={{ week_offset }}'">
+            {% for loc in locations %}
+            <option value="{{ loc.id }}" {{ 'selected' if selected_location == loc.id }}>{{ loc.name }} ({{ loc.code }})</option>
+            {% endfor %}
+        </select>
+        {% endif %}
+        <div class="week-nav">
+            <a href="{{ url_for('plan_view', location=selected_location, week=week_offset-1) }}">&#9664;</a>
+            <span class="kw-label">KW {{ kw }}</span>
+            <a href="{{ url_for('plan_view', location=selected_location, week=week_offset+1) }}">&#9654;</a>
+        </div>
+        {% if week_offset != 0 %}
+        <a href="{{ url_for('plan_view', location=selected_location) }}" class="btn btn-secondary btn-sm">Aktuelle Woche</a>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Wochentage -->
+<div class="plan-grid">
+    {% for day in week_days %}
+    <div class="day-col {{ 'holiday' if day.is_holiday }} {{ 'today' if day.is_today }}">
+        <div class="day-header">
+            <div class="day-name">{{ day.weekday }}</div>
+            <div class="day-date">{{ day.date.strftime('%d.%m.') }}</div>
+            {% if day.is_holiday %}
+            <div class="holiday-label">{{ day.holiday_name }}</div>
+            {% endif %}
+        </div>
+        <div class="day-body">
+            {% if not day.is_holiday %}
+                {% for pe in entries.get(day.date, []) %}
+                <div class="plan-entry">
+                    <div class="pe-material">{{ pe.product.material_type.name }}</div>
+                    <div class="pe-dims">
+                        {{ pe.product.length_mm }} x {{ pe.product.strength_mm }} mm
+                        {% if pe.quantity %}<span class="pe-qty">&middot; {{ pe.quantity }} Stk.</span>{% endif %}
+                    </div>
+                    {% if pe.notes %}<div class="pe-notes">{{ pe.notes }}</div>{% endif %}
+                    {% if can_edit_plan %}
+                    <form method="POST" action="{{ url_for('plan_delete', entry_id=pe.id) }}" style="display:inline;">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                        <input type="hidden" name="week_offset" value="{{ week_offset }}">
+                        <button type="submit" class="pe-delete" title="Löschen">&times;</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endfor %}
+
+                {% if can_edit_plan %}
+                <button class="day-add" onclick="openAddModal('{{ day.date.isoformat() }}', '{{ day.weekday }}, {{ day.date.strftime("%d.%m.%Y") }}')" title="Eintrag hinzufügen">+</button>
+                {% endif %}
+            {% endif %}
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+{% if can_edit_plan %}
+<!-- Low-Stock Schnelleingabe -->
+<div class="low-stock-bar">
+    <h4>Niedrigste Bestände einplanen</h4>
+    <form method="POST" action="{{ url_for('plan_add_low_stock') }}" class="d-flex gap-2 align-center" style="flex-wrap: wrap;">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+        <input type="hidden" name="location_id" value="{{ selected_location }}">
+        <input type="hidden" name="week_offset" value="{{ week_offset }}">
+        <select name="date" class="form-control" style="width: auto;" required>
+            {% for day in week_days %}
+            {% if not day.is_holiday %}
+            <option value="{{ day.date.isoformat() }}">{{ day.weekday }}, {{ day.date.strftime('%d.%m.') }}</option>
+            {% endif %}
+            {% endfor %}
+        </select>
+        <select name="count" class="form-control" style="width: auto;">
+            <option value="3">Top 3</option>
+            <option value="5" selected>Top 5</option>
+            <option value="10">Top 10</option>
+        </select>
+        <span style="font-size: 13px; color: #666;">Produkte mit niedrigstem Bestand</span>
+        <button type="submit" class="btn btn-primary btn-sm" style="background: var(--ibe-orange);">Einplanen</button>
+    </form>
+</div>
+
+<!-- Hinzufügen-Modal -->
+<div class="modal-bg" id="addModal">
+    <div class="modal-box">
+        <div class="modal-header">
+            <h3 id="modalTitle">Eintrag hinzufügen</h3>
+            <button class="modal-close" onclick="closeModal()">&times;</button>
+        </div>
+        <div class="modal-body">
+            <form method="POST" action="{{ url_for('plan_add') }}" id="addForm">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+                <input type="hidden" name="date" id="modalDate">
+                <input type="hidden" name="location_id" value="{{ selected_location }}">
+                <input type="hidden" name="week_offset" value="{{ week_offset }}">
+
+                <div class="form-group">
+                    <label>Materialart</label>
+                    <select id="materialFilter" class="form-control" onchange="loadProducts()">
+                        <option value="">Alle Materialarten</option>
+                        {% for mt in material_types %}
+                        <option value="{{ mt.id }}">{{ mt.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Produkt</label>
+                    <select name="product_id" id="productSelect" class="form-control" required>
+                        <option value="">Wird geladen...</option>
+                    </select>
+                </div>
+
+                <div class="form-group">
+                    <label>Menge (optional)</label>
+                    <input type="number" name="quantity" class="form-control" min="0" step="1"
+                           inputmode="numeric" pattern="[0-9]*" placeholder="0">
+                </div>
+
+                <div class="form-group">
+                    <label>Notiz (optional)</label>
+                    <input type="text" name="notes" class="form-control" maxlength="200" placeholder="z.B. Priorität, Kundenauftrag...">
+                </div>
+
+                <div class="d-flex gap-2">
+                    <button type="submit" class="btn btn-primary">Hinzufügen</button>
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Abbrechen</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+{% set mt_list = [] %}
+{% for mt in material_types %}{% if mt_list.append(mt) %}{% endif %}{% endfor %}
+const materialTypes = [
+    {% for mt in material_types %}
+    { id: {{ mt.id }}, name: "{{ mt.name }}" },
+    {% endfor %}
+];
+
+function openAddModal(dateStr, label) {
+    document.getElementById('modalDate').value = dateStr;
+    document.getElementById('modalTitle').textContent = 'Eintrag: ' + label;
+    document.getElementById('addModal').classList.add('open');
+    loadProducts();
+}
+
+function closeModal() {
+    document.getElementById('addModal').classList.remove('open');
+}
+
+// Klick außerhalb schließt Modal
+document.getElementById('addModal')?.addEventListener('click', function(e) {
+    if (e.target === this) closeModal();
+});
+
+// Escape schließt Modal
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape') closeModal();
+});
+
+function loadProducts() {
+    const matId = document.getElementById('materialFilter').value;
+    const url = '/plan/products' + (matId ? '?material=' + matId : '');
+    fetch(url)
+        .then(r => r.json())
+        .then(products => {
+            const sel = document.getElementById('productSelect');
+            sel.innerHTML = '<option value="">Bitte wählen...</option>';
+            products.forEach(p => {
+                const opt = document.createElement('option');
+                opt.value = p.id;
+                opt.textContent = p.label;
+                sel.appendChild(opt);
+            });
+        });
+}
+</script>
+{% endblock %}

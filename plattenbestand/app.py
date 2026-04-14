@@ -11,7 +11,8 @@ from wtforms import StringField, PasswordField, SelectField, BooleanField
 from wtforms.validators import DataRequired, Email, Length
 
 from config import Config
-from models import db, User, Location, MaterialType, Product, Inventory, AuditLog
+from models import db, User, Location, MaterialType, Product, Inventory, AuditLog, PlanEntry
+from holidays_bayern import get_holidays, is_holiday, get_holiday_name
 
 app = Flask(__name__)
 app.config.from_object(Config)
@@ -520,6 +521,239 @@ def inventory_list():
                            selected_date=date_str,
                            selected_date_obj=selected_date_obj,
                            available_dates=available_dates)
+
+
+# --- Beschichtungsplan ---
+@app.route('/plan')
+@login_required
+def plan_view():
+    """Wochenansicht Beschichtungsplan."""
+    from datetime import timedelta
+
+    if current_user.role == 'admin':
+        locations = Location.query.all()
+    else:
+        locations = [current_user.location] if current_user.location else []
+
+    location_id = request.args.get('location', type=int)
+    week_offset = request.args.get('week', 0, type=int)
+
+    # Standard-Standort
+    if not location_id:
+        location_id = locations[0].id if locations else None
+    sel_location = db.session.get(Location, location_id) if location_id else None
+
+    if sel_location and current_user.role != 'admin' and current_user.location_id != location_id:
+        flash('Keine Berechtigung für diesen Standort.', 'danger')
+        return redirect(url_for('plan_view'))
+
+    # Woche berechnen (Mo-Fr)
+    today = dt_date.today()
+    monday = today - timedelta(days=today.weekday()) + timedelta(weeks=week_offset)
+    week_days = []
+    holidays_this_year = get_holidays(monday.year)
+    # Falls die Woche über den Jahreswechsel geht
+    if monday.year != (monday + timedelta(days=4)).year:
+        holidays_this_year.update(get_holidays(monday.year + 1))
+
+    for i in range(5):  # Mo-Fr
+        d = monday + timedelta(days=i)
+        holiday_name = holidays_this_year.get(d)
+        week_days.append({
+            'date': d,
+            'weekday': ['Montag', 'Dienstag', 'Mittwoch', 'Donnerstag', 'Freitag'][i],
+            'is_holiday': holiday_name is not None,
+            'holiday_name': holiday_name,
+            'is_today': d == today,
+        })
+
+    # Plan-Einträge laden
+    entries = {}
+    if sel_location:
+        for pe in (
+            PlanEntry.query
+            .filter(
+                PlanEntry.location_id == location_id,
+                PlanEntry.date >= monday,
+                PlanEntry.date <= monday + timedelta(days=4),
+            )
+            .order_by(PlanEntry.date, PlanEntry.id)
+            .all()
+        ):
+            entries.setdefault(pe.date, []).append(pe)
+
+    # Kalenderwochen-Infos
+    kw = monday.isocalendar()[1]
+
+    can_edit_plan = current_user.role in ('bereichsleiter', 'admin')
+
+    material_types = MaterialType.query.order_by(MaterialType.sort_order).all()
+
+    return render_template('plan.html',
+                           locations=locations,
+                           sel_location=sel_location,
+                           selected_location=location_id,
+                           week_days=week_days,
+                           entries=entries,
+                           kw=kw,
+                           week_offset=week_offset,
+                           monday=monday,
+                           can_edit_plan=can_edit_plan,
+                           material_types=material_types)
+
+
+@app.route('/plan/add', methods=['POST'])
+@login_required
+def plan_add():
+    """Eintrag zum Beschichtungsplan hinzufügen."""
+    if current_user.role not in ('bereichsleiter', 'admin'):
+        flash('Nur Bereichsleiter und Admins dürfen den Plan bearbeiten.', 'danger')
+        return redirect(url_for('plan_view'))
+
+    plan_date = request.form.get('date')
+    location_id = request.form.get('location_id', type=int)
+    product_id = request.form.get('product_id', type=int)
+    quantity = request.form.get('quantity', 0, type=int)
+    notes = request.form.get('notes', '').strip()
+    week_offset = request.form.get('week_offset', 0, type=int)
+
+    if not plan_date or not product_id or not location_id:
+        flash('Bitte alle Felder ausfüllen.', 'warning')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+    try:
+        d = dt_date.fromisoformat(plan_date)
+    except ValueError:
+        flash('Ungültiges Datum.', 'danger')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+    if is_holiday(d):
+        flash(f'{d.strftime("%d.%m.%Y")} ist ein Feiertag.', 'warning')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+    entry = PlanEntry(
+        date=d,
+        location_id=location_id,
+        product_id=product_id,
+        quantity=quantity,
+        notes=notes,
+        created_by=current_user.id,
+    )
+    db.session.add(entry)
+    db.session.commit()
+    log_action('create', 'plan', entry.id, {
+        'date': d.isoformat(), 'product_id': product_id, 'quantity': quantity})
+
+    flash('Eintrag hinzugefügt.', 'success')
+    return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+
+@app.route('/plan/delete/<int:entry_id>', methods=['POST'])
+@login_required
+def plan_delete(entry_id):
+    if current_user.role not in ('bereichsleiter', 'admin'):
+        flash('Keine Berechtigung.', 'danger')
+        return redirect(url_for('plan_view'))
+
+    entry = db.session.get(PlanEntry, entry_id)
+    if not entry:
+        flash('Eintrag nicht gefunden.', 'danger')
+        return redirect(url_for('plan_view'))
+
+    week_offset = request.form.get('week_offset', 0, type=int)
+    location_id = entry.location_id
+    log_action('delete', 'plan', entry.id, {'date': entry.date.isoformat()})
+    db.session.delete(entry)
+    db.session.commit()
+    flash('Eintrag gelöscht.', 'success')
+    return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+
+@app.route('/plan/products')
+@login_required
+def plan_products():
+    """JSON: Produkte für Dropdown, optional gefiltert nach Material."""
+    material_id = request.args.get('material', type=int)
+    query = (
+        db.session.query(Product, MaterialType)
+        .join(MaterialType, Product.material_type_id == MaterialType.id)
+        .order_by(MaterialType.sort_order, Product.length_mm, Product.strength_mm)
+    )
+    if material_id:
+        query = query.filter(Product.material_type_id == material_id)
+    results = query.all()
+    return jsonify([{
+        'id': p.id,
+        'label': f'{mt.name} — {p.length_mm} x {p.strength_mm} mm',
+        'material': mt.name,
+        'length': p.length_mm,
+        'strength': p.strength_mm,
+    } for p, mt in results])
+
+
+@app.route('/plan/add-low-stock', methods=['POST'])
+@login_required
+def plan_add_low_stock():
+    """Niedrigste Bestände direkt in den Plan übernehmen."""
+    if current_user.role not in ('bereichsleiter', 'admin'):
+        flash('Keine Berechtigung.', 'danger')
+        return redirect(url_for('plan_view'))
+
+    plan_date = request.form.get('date')
+    location_id = request.form.get('location_id', type=int)
+    week_offset = request.form.get('week_offset', 0, type=int)
+    count = request.form.get('count', 5, type=int)
+
+    try:
+        d = dt_date.fromisoformat(plan_date)
+    except (ValueError, TypeError):
+        flash('Ungültiges Datum.', 'danger')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+    if is_holiday(d):
+        flash('Kann keine Einträge an Feiertagen anlegen.', 'warning')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+    # Niedrigste Bestände finden
+    latest = db.session.query(db.func.max(Inventory.date)).scalar()
+    if not latest:
+        flash('Keine Bestandsdaten vorhanden.', 'warning')
+        return redirect(url_for('plan_view', week=week_offset, location=location_id))
+
+    low_q = (
+        db.session.query(
+            Product.id,
+            db.func.sum(Inventory.summe).label('total'),
+        )
+        .join(Product, Inventory.product_id == Product.id)
+        .filter(Inventory.date == latest)
+    )
+    if location_id:
+        low_q = low_q.filter(Inventory.location_id == location_id)
+    low_items = (
+        low_q
+        .group_by(Product.id)
+        .having(db.func.sum(Inventory.summe) >= 0)
+        .order_by('total')
+        .limit(count)
+        .all()
+    )
+
+    added = 0
+    for item in low_items:
+        entry = PlanEntry(
+            date=d, location_id=location_id,
+            product_id=item.id, quantity=0,
+            notes=f'Niedriger Bestand ({item.total} Stk.)',
+            created_by=current_user.id,
+        )
+        db.session.add(entry)
+        added += 1
+
+    db.session.commit()
+    log_action('create', 'plan', None, {'action': 'low_stock', 'count': added, 'date': d.isoformat()})
+    flash(f'{added} Produkte mit niedrigstem Bestand eingeplant.', 'success')
+    return redirect(url_for('plan_view', week=week_offset, location=location_id))
 
 
 # --- Auswertungen ---
