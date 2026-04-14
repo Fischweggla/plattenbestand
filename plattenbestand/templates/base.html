@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}Plattenbestand{% endblock %} - iBE</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+    <link rel="icon" href="{{ url_for('static', filename='img/ibe-logo-klein.png') }}">
+    {% block head %}{% endblock %}
+</head>
+<body>
+    <aside class="sidebar" id="sidebar">
+        <div class="sidebar-logo">
+            <img src="{{ url_for('static', filename='img/logo-weiss.png') }}" alt="iBE Logo">
+            <div class="app-title">Plattenbestand<br>Management</div>
+        </div>
+        <nav class="sidebar-nav">
+            <div class="nav-section">Navigation</div>
+            <a href="{{ url_for('dashboard') }}" class="{{ 'active' if request.endpoint == 'dashboard' }}">
+                <span class="nav-icon">&#9632;</span> Dashboard
+            </a>
+            <a href="{{ url_for('entry_select') }}" class="{{ 'active' if request.endpoint in ('entry_select', 'entry_form') }}">
+                <span class="nav-icon">&#9998;</span> Dateneingabe
+            </a>
+            <a href="{{ url_for('inventory_list') }}" class="{{ 'active' if request.endpoint == 'inventory_list' }}">
+                <span class="nav-icon">&#9776;</span> Bestandsliste
+            </a>
+            <a href="{{ url_for('reports') }}" class="{{ 'active' if request.endpoint == 'reports' }}">
+                <span class="nav-icon">&#9636;</span> Auswertungen
+            </a>
+            {% if current_user.role == 'admin' %}
+            <div class="nav-section">Administration</div>
+            <a href="{{ url_for('user_list') }}" class="{{ 'active' if request.endpoint in ('user_list', 'user_create', 'user_edit') }}">
+                <span class="nav-icon">&#9775;</span> Benutzer
+            </a>
+            <a href="{{ url_for('audit_log') }}" class="{{ 'active' if request.endpoint == 'audit_log' }}">
+                <span class="nav-icon">&#9201;</span> Protokoll
+            </a>
+            {% endif %}
+        </nav>
+        <div class="sidebar-footer">
+            <div class="user-info">
+                <div class="user-avatar">{{ current_user.full_name[0] }}</div>
+                <div>
+                    {{ current_user.full_name }}<br>
+                    <small class="text-muted">
+                        {{ current_user.role | capitalize }}
+                        {% if current_user.location %} &middot; {{ current_user.location.name }}{% endif %}
+                    </small>
+                </div>
+            </div>
+            <a href="{{ url_for('logout') }}" style="color: rgba(255,255,255,0.5); font-size: 13px; text-decoration: none;">Abmelden</a>
+        </div>
+    </aside>
+
+    <main class="main-content">
+        <div class="topbar">
+            <div class="d-flex align-center gap-2">
+                <button class="mobile-toggle" onclick="document.getElementById('sidebar').classList.toggle('open')">&#9776;</button>
+                <h1>{% block page_title %}Dashboard{% endblock %}</h1>
+            </div>
+            <div class="topbar-actions">
+                {% block topbar_actions %}{% endblock %}
+            </div>
+        </div>
+
+        {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+        <div class="flash-messages">
+            {% for category, message in messages %}
+            <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+        {% endif %}
+        {% endwith %}
+
+        <div class="page-content">
+            {% block content %}{% endblock %}
+        </div>
+    </main>
+
+    {% block scripts %}{% endblock %}
+</body>
+</html>

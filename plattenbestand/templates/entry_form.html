@@ -1,0 +1,241 @@
+{% extends "base.html" %}
+{% block title %}Eingabe: {{ material.name }}{% endblock %}
+{% block page_title %}{{ material.name }}{% endblock %}
+
+{% block topbar_actions %}
+<span style="font-size: 13px; color: #666;">
+    {{ location.name }} &middot; {{ entry_date.strftime('%d.%m.%Y') }}
+    {% for p in products[:1] %} &middot; {{ p.length_mm }} mm {% if products | map(attribute='strength_mm') | list | unique | list | length == 1 %}&middot; {{ p.strength_mm }} mm{% endif %}{% endfor %}
+</span>
+{% endblock %}
+
+{% block head %}
+<style>
+    .entry-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+    }
+    .entry-table th {
+        background: var(--ibe-dark);
+        color: #fff;
+        padding: 8px 10px;
+        font-weight: 500;
+        font-size: 12px;
+        text-align: center;
+        white-space: nowrap;
+        position: sticky;
+        top: 0;
+        z-index: 10;
+    }
+    .entry-table th.length-header {
+        background: var(--ibe-blue);
+        text-align: left;
+        font-size: 14px;
+        padding: 10px 14px;
+    }
+    .entry-table td {
+        padding: 4px 6px;
+        border: 1px solid var(--ibe-border);
+        text-align: center;
+        vertical-align: middle;
+    }
+    .entry-table td.strength-cell {
+        background: var(--ibe-light-bg);
+        font-weight: 700;
+        color: var(--ibe-dark);
+        text-align: right;
+        padding-right: 12px;
+        width: 60px;
+    }
+    .entry-table td.beginn-cell {
+        background: var(--ibe-light-bg);
+        color: #666;
+        font-variant-numeric: tabular-nums;
+        min-width: 60px;
+    }
+    .entry-table input[type="number"] {
+        width: 72px;
+        padding: 6px 8px;
+        border: 1px solid var(--ibe-border);
+        border-radius: 4px;
+        font-size: 13px;
+        text-align: right;
+        font-family: 'Roboto', sans-serif;
+        font-variant-numeric: tabular-nums;
+        transition: border-color 0.15s;
+    }
+    .entry-table input[type="number"]:focus {
+        outline: none;
+        border-color: var(--ibe-blue);
+        box-shadow: 0 0 0 2px rgba(89,133,194,0.2);
+    }
+    .entry-table input.changed {
+        background: rgba(89,133,194,0.08);
+        border-color: var(--ibe-blue);
+    }
+    .entry-table .summe-cell {
+        font-weight: 700;
+        color: var(--ibe-dark);
+        background: rgba(157,192,66,0.08);
+        min-width: 60px;
+        font-variant-numeric: tabular-nums;
+    }
+    .entry-table .summe-cell.negative {
+        color: #d9534f;
+        background: rgba(220,53,69,0.06);
+    }
+    .entry-actions {
+        position: sticky;
+        bottom: 0;
+        background: #fff;
+        border-top: 2px solid var(--ibe-border);
+        padding: 16px 20px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        z-index: 20;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<form method="POST" id="entryForm">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+
+    {% if is_edit and not current_user.can_edit() %}
+    <div class="alert alert-warning" style="margin-bottom: 16px;">
+        Diese Daten wurden bereits erfasst. Nur Bereichsleiter und Administratoren können bestehende Einträge ändern.
+    </div>
+    {% endif %}
+
+    {% for length_mm, prods in products_by_length.items() %}
+    <div class="card" style="margin-bottom: 16px;">
+        <div class="card-body" style="padding: 0; overflow-x: auto;">
+            <table class="entry-table">
+                <thead>
+                    <tr>
+                        <th class="length-header" colspan="6">Länge: {{ length_mm }} mm</th>
+                    </tr>
+                    <tr>
+                        <th style="width: 60px;">Stärke</th>
+                        <th>Vorbestand</th>
+                        <th>Zugang</th>
+                        <th>Abgang</th>
+                        <th>Abfall</th>
+                        <th style="min-width: 80px;">Summe</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for product in prods %}
+                    {% set inv = existing.get(product.id) %}
+                    {% set prev_summe = prev_data.get(product.id, 0) %}
+                    {% set beginn_val = inv.beginn if inv else prev_summe %}
+                    {% set readonly = is_edit and not current_user.can_edit() %}
+                    <tr>
+                        <td class="strength-cell">{{ product.strength_mm }}</td>
+                        <td class="beginn-cell" id="beginn_{{ product.id }}" data-beginn="{{ beginn_val }}">
+                            {{ beginn_val }}
+                        </td>
+                        <td>
+                            <input type="number" name="p_{{ product.id }}_zugang"
+                                   value="{{ inv.zugang if inv else 0 }}"
+                                   class="entry-input" data-pid="{{ product.id }}" data-field="zugang"
+                                   {{ 'readonly' if readonly }} min="0" step="1" inputmode="numeric" pattern="[0-9]*"
+                                   oninput="forceInt(this); calcSumme({{ product.id }}); markChanged(this);">
+                        </td>
+                        <td>
+                            <input type="number" name="p_{{ product.id }}_abgang"
+                                   value="{{ inv.abgang if inv else 0 }}"
+                                   class="entry-input" data-pid="{{ product.id }}" data-field="abgang"
+                                   {{ 'readonly' if readonly }} min="0" step="1" inputmode="numeric" pattern="[0-9]*"
+                                   oninput="forceInt(this); calcSumme({{ product.id }}); markChanged(this);">
+                        </td>
+                        <td>
+                            <input type="number" name="p_{{ product.id }}_abfall"
+                                   value="{{ inv.abfall if inv else 0 }}"
+                                   class="entry-input" data-pid="{{ product.id }}" data-field="abfall"
+                                   {{ 'readonly' if readonly }} min="0" step="1" inputmode="numeric" pattern="[0-9]*"
+                                   oninput="forceInt(this); calcSumme({{ product.id }}); markChanged(this);">
+                        </td>
+                        <td class="summe-cell" id="summe_{{ product.id }}">
+                            {% if inv %}{{ inv.summe }}{% else %}{{ beginn_val }}{% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endfor %}
+
+    <div class="entry-actions">
+        <a href="{{ url_for('entry_select') }}" class="btn btn-secondary">Zurück</a>
+        <div class="d-flex gap-2 align-center">
+            <span id="changeCount" class="text-muted" style="font-size: 13px;"></span>
+            {% if not (is_edit and not current_user.can_edit()) %}
+            <button type="submit" class="btn btn-primary" id="saveBtn">
+                {{ 'Änderungen speichern' if is_edit else 'Daten speichern' }}
+            </button>
+            {% endif %}
+        </div>
+    </div>
+</form>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// Nur ganze Zahlen erlauben
+function forceInt(input) {
+    input.value = input.value.replace(/[^0-9]/g, '');
+}
+
+document.addEventListener('keydown', function(e) {
+    if (!e.target.classList.contains('entry-input')) return;
+    // Erlaubt: Ziffern, Backspace, Delete, Tab, Enter, Pfeiltasten, Home, End, Strg+A/C/V/X
+    const allowed = ['Backspace','Delete','Tab','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
+    if (allowed.includes(e.key)) return;
+    if ((e.ctrlKey || e.metaKey) && ['a','c','v','x'].includes(e.key.toLowerCase())) return;
+    if (e.key >= '0' && e.key <= '9') return;
+    e.preventDefault();
+});
+
+function calcSumme(pid) {
+    const beginn = parseInt(document.getElementById(`beginn_${pid}`).dataset.beginn) || 0;
+    const get = (f) => parseInt(document.querySelector(`[name="p_${pid}_${f}"]`).value) || 0;
+    const summe = beginn + get('zugang') - get('abgang') - get('abfall');
+    const cell = document.getElementById(`summe_${pid}`);
+    cell.textContent = summe;
+    cell.classList.toggle('negative', summe < 0);
+}
+
+function markChanged(input) {
+    input.classList.add('changed');
+    updateChangeCount();
+}
+
+function updateChangeCount() {
+    const count = document.querySelectorAll('.entry-input.changed').length;
+    const el = document.getElementById('changeCount');
+    el.textContent = count > 0 ? `${count} Feld(er) geändert` : '';
+}
+
+// Enter springt zum nächsten Feld
+document.querySelectorAll('.entry-input').forEach(input => {
+    input.addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            const inputs = [...document.querySelectorAll('.entry-input')];
+            const idx = inputs.indexOf(this);
+            if (idx < inputs.length - 1) inputs[idx + 1].focus();
+        }
+    });
+});
+
+// Initial Summen berechnen
+document.querySelectorAll('.summe-cell').forEach(cell => {
+    const pid = cell.id.replace('summe_', '');
+    calcSumme(pid);
+});
+</script>
+{% endblock %}

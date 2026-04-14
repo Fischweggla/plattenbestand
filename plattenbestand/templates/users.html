@@ -1,0 +1,64 @@
+{% extends "base.html" %}
+{% block title %}Benutzerverwaltung{% endblock %}
+{% block page_title %}Benutzerverwaltung{% endblock %}
+
+{% block topbar_actions %}
+<a href="{{ url_for('user_create') }}" class="btn btn-primary btn-sm">+ Neuer Benutzer</a>
+{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Benutzer</th>
+                        <th>E-Mail</th>
+                        <th>Rolle</th>
+                        <th>Standort</th>
+                        <th>Status</th>
+                        <th>Letzter Login</th>
+                        <th></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>
+                            <div class="d-flex align-center gap-2">
+                                <div style="width:28px;height:28px;border-radius:50%;background:var(--ibe-blue);color:#fff;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;">{{ user.full_name[0] }}</div>
+                                <div>
+                                    <strong>{{ user.full_name }}</strong><br>
+                                    <small class="text-muted">{{ user.username }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            {% if user.role == 'admin' %}
+                            <span class="badge badge-admin">Admin</span>
+                            {% elif user.role == 'bereichsleiter' %}
+                            <span class="badge badge-editor">Bereichsleiter</span>
+                            {% else %}
+                            <span class="badge badge-viewer">Fertigung</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.location.name if user.location else 'Alle' }}</td>
+                        <td>
+                            {% if user.is_active %}
+                            <span class="badge badge-active">Aktiv</span>
+                            {% else %}
+                            <span class="badge badge-inactive">Inaktiv</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ user.last_login.strftime('%d.%m.%Y %H:%M') if user.last_login else '-' }}</td>
+                        <td><a href="{{ url_for('user_edit', user_id=user.id) }}" class="btn btn-secondary btn-sm">Bearbeiten</a></td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

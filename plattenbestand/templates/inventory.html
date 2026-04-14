@@ -1,0 +1,295 @@
+{% extends "base.html" %}
+{% block title %}Bestandsübersicht{% endblock %}
+{% block page_title %}Bestandsübersicht{% endblock %}
+
+{% block topbar_actions %}
+<span style="font-size: 14px; color: #666;">
+    {% if selected_location_obj %}
+    {{ selected_location_obj.name }}
+    {% else %}
+    Gesamt alle Werke
+    {% endif %}
+    {% if selected_date_obj %}
+    &middot; Stand {{ selected_date_obj.strftime('%d.%m.%Y') }}
+    {% endif %}
+</span>
+{% endblock %}
+
+{% block head %}
+<style>
+    /* Standort-Tabs */
+    .loc-tabs {
+        display: flex;
+        gap: 0;
+        margin-bottom: 24px;
+        border-bottom: 2px solid var(--ibe-border);
+    }
+    .loc-tab {
+        padding: 12px 24px;
+        font-size: 14px;
+        font-weight: 500;
+        color: #888;
+        text-decoration: none;
+        border-bottom: 3px solid transparent;
+        margin-bottom: -2px;
+        transition: all 0.15s;
+        font-family: 'Roboto', sans-serif;
+    }
+    .loc-tab:hover { color: var(--ibe-dark); background: var(--ibe-light-bg); }
+    .loc-tab.active {
+        color: var(--ibe-dark);
+        border-bottom-color: var(--ibe-blue);
+        font-weight: 700;
+    }
+    .loc-tab .tab-count {
+        font-size: 11px;
+        color: #999;
+        font-weight: 400;
+        margin-left: 4px;
+    }
+
+    /* Datum-Leiste */
+    .date-bar {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+    .date-bar select { width: auto; min-width: 180px; }
+
+    /* Material-Karten */
+    .mat-card {
+        background: #fff;
+        border-radius: 8px;
+        box-shadow: var(--ibe-card-shadow);
+        border: 1px solid var(--ibe-border);
+        margin-bottom: 20px;
+        overflow: hidden;
+    }
+    .mat-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 14px 20px;
+        background: var(--ibe-dark);
+        color: #fff;
+    }
+    .mat-header h3 {
+        margin: 0;
+        font-size: 15px;
+        font-weight: 500;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+    .mat-header .mat-icon {
+        width: 30px; height: 30px; border-radius: 6px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 14px; font-weight: 700;
+    }
+    .mat-header .mat-icon.coated { background: rgba(89,133,194,0.3); }
+    .mat-header .mat-icon.uncoated { background: rgba(224,130,45,0.3); }
+    .mat-header .mat-total {
+        font-size: 22px;
+        font-weight: 700;
+        font-variant-numeric: tabular-nums;
+    }
+    .mat-header .mat-total-label {
+        font-size: 11px;
+        color: rgba(255,255,255,0.6);
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+    }
+
+    /* Bestandstabelle im Excel-Stil */
+    .stock-table {
+        width: 100%;
+        border-collapse: collapse;
+        font-size: 13px;
+        font-variant-numeric: tabular-nums;
+    }
+    .stock-table th {
+        padding: 8px 12px;
+        text-align: center;
+        font-weight: 600;
+        font-size: 12px;
+        white-space: nowrap;
+    }
+    .stock-table th.corner {
+        background: var(--ibe-light-bg);
+        color: #999;
+        font-size: 11px;
+        text-align: right;
+        padding-right: 10px;
+    }
+    .stock-table th.len-header {
+        background: var(--ibe-blue);
+        color: #fff;
+        min-width: 80px;
+    }
+    .stock-table th.str-header {
+        background: var(--ibe-light-bg);
+        color: var(--ibe-dark);
+        text-align: right;
+        padding-right: 14px;
+        width: 70px;
+        border-right: 2px solid var(--ibe-border);
+    }
+    .stock-table td {
+        padding: 8px 12px;
+        text-align: center;
+        border: 1px solid var(--ibe-border);
+        font-weight: 500;
+    }
+    .stock-table td.val {
+        color: var(--ibe-dark);
+    }
+    .stock-table td.val.zero {
+        color: #ccc;
+        font-weight: 400;
+    }
+    .stock-table td.val.high {
+        background: rgba(157,192,66,0.1);
+        color: #4a7a10;
+        font-weight: 700;
+    }
+    .stock-table td.val.low {
+        background: rgba(220,53,69,0.06);
+        color: #c9302c;
+    }
+    .stock-table td.row-total {
+        font-weight: 700;
+        background: var(--ibe-light-bg);
+        color: var(--ibe-dark);
+        border-left: 2px solid var(--ibe-border);
+    }
+    .stock-table tr.totals-row td {
+        font-weight: 700;
+        background: rgba(0,50,75,0.04);
+        border-top: 2px solid var(--ibe-dark);
+        color: var(--ibe-dark);
+    }
+    .stock-table tr.totals-row th {
+        background: rgba(0,50,75,0.04);
+        border-top: 2px solid var(--ibe-dark);
+        color: var(--ibe-dark);
+        font-weight: 700;
+        text-align: right;
+        padding-right: 14px;
+        border-right: 2px solid var(--ibe-border);
+    }
+
+    /* Leere Materialart */
+    .mat-empty {
+        padding: 24px 20px;
+        text-align: center;
+        color: #bbb;
+        font-size: 13px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Standort-Tabs -->
+<div class="loc-tabs">
+    <a href="{{ url_for('inventory_list', date=selected_date) }}"
+       class="loc-tab {{ 'active' if not selected_location }}">
+        Gesamt
+    </a>
+    {% for loc in locations %}
+    <a href="{{ url_for('inventory_list', location=loc.id, date=selected_date) }}"
+       class="loc-tab {{ 'active' if selected_location == loc.id }}">
+        {{ loc.name }}
+        <span class="tab-count">({{ loc.code }})</span>
+    </a>
+    {% endfor %}
+</div>
+
+<!-- Datum -->
+<div class="date-bar">
+    <label style="font-size: 13px; font-weight: 500; color: var(--ibe-dark);">Stichtag:</label>
+    <select class="form-control" onchange="window.location.href='{{ url_for('inventory_list', location=selected_location) }}&date=' + this.value;">
+        {% for d in available_dates %}
+        <option value="{{ d.isoformat() }}" {{ 'selected' if selected_date_obj and d == selected_date_obj }}>
+            {{ d.strftime('%d.%m.%Y') }}
+            {% if loop.index == 1 %} (aktuell){% endif %}
+        </option>
+        {% endfor %}
+    </select>
+</div>
+
+<!-- Material-Karten mit Tabellen -->
+{% for mg in mat_grid %}
+{% set mt = mg.material %}
+{% set is_coated = 'Beschichtet' in mt.name and 'Un' not in mt.name %}
+<div class="mat-card">
+    <div class="mat-header">
+        <h3>
+            <span class="mat-icon {{ 'coated' if is_coated else 'uncoated' }}">
+                {% if 'Styropor' in mt.name and 'gelb' not in mt.name %}S
+                {% elif 'PU' in mt.name %}P
+                {% elif 'Mineral' in mt.name %}M
+                {% elif 'Holz' in mt.name %}H
+                {% elif 'gelb' in mt.name or 'Perimeter' in mt.name %}B
+                {% else %}?{% endif %}
+            </span>
+            {{ mt.name }}
+        </h3>
+        <div style="text-align: right;">
+            <div class="mat-total">{{ "{:,}".format(mg.total).replace(",", ".") }}</div>
+            <div class="mat-total-label">Gesamt Stück</div>
+        </div>
+    </div>
+
+    {% if mg.data %}
+    <div style="overflow-x: auto;">
+        <table class="stock-table">
+            <thead>
+                <tr>
+                    <th class="corner">Stärke &#8595; / Länge &#8594;</th>
+                    {% for l in mg.lengths %}
+                    <th class="len-header">{{ l }}</th>
+                    {% endfor %}
+                    <th class="len-header" style="background: var(--ibe-dark);">Summe</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for s in mg.strengths %}
+                <tr>
+                    <th class="str-header">{{ s }} mm</th>
+                    {% set row_total = [0] %}
+                    {% for l in mg.lengths %}
+                    {% set cell = mg.data.get((l, s)) %}
+                    {% set val = cell['summe'] if cell else 0 %}
+                    {% if val %}{% if row_total.append(row_total.pop() + val) %}{% endif %}{% endif %}
+                    <td class="val {{ 'zero' if val == 0 else 'high' if val >= 500 else 'low' if val < 0 }}">
+                        {% if val != 0 %}{{ val }}{% else %}&mdash;{% endif %}
+                    </td>
+                    {% endfor %}
+                    <td class="row-total">{% if row_total[0] != 0 %}{{ row_total[0] }}{% else %}&mdash;{% endif %}</td>
+                </tr>
+                {% endfor %}
+                {% if mg.strengths | length > 1 %}
+                <tr class="totals-row">
+                    <th>Summe</th>
+                    {% for l in mg.lengths %}
+                    {% set col_total = [0] %}
+                    {% for s in mg.strengths %}
+                    {% set cell = mg.data.get((l, s)) %}
+                    {% set val = cell['summe'] if cell else 0 %}
+                    {% if val %}{% if col_total.append(col_total.pop() + val) %}{% endif %}{% endif %}
+                    {% endfor %}
+                    <td>{% if col_total[0] != 0 %}{{ col_total[0] }}{% else %}&mdash;{% endif %}</td>
+                    {% endfor %}
+                    <td style="border-left: 2px solid var(--ibe-dark);">{{ mg.total }}</td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+    {% else %}
+    <div class="mat-empty">Keine Bestandsdaten vorhanden</div>
+    {% endif %}
+</div>
+{% endfor %}
+{% endblock %}

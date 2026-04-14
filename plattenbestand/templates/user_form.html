@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ title }}{% endblock %}
+{% block page_title %}{{ title }}{% endblock %}
+
+{% block content %}
+<div class="card" style="max-width: 600px;">
+    <div class="card-body">
+        <form method="POST">
+            {{ form.hidden_tag() }}
+            <div class="form-group">
+                <label>Benutzername</label>
+                {{ form.username(class="form-control") }}
+            </div>
+            <div class="form-group">
+                <label>Vollständiger Name</label>
+                {{ form.full_name(class="form-control") }}
+            </div>
+            <div class="form-group">
+                <label>E-Mail</label>
+                {{ form.email(class="form-control") }}
+            </div>
+            <div class="form-group">
+                <label>Rolle</label>
+                {{ form.role(class="form-control") }}
+                <small class="text-muted" style="display: block; margin-top: 4px;">
+                    <strong>Fertigung:</strong> Eigenen Standort sehen + Werte eintragen &middot;
+                    <strong>Bereichsleiter:</strong> Zusätzlich Daten ändern &middot;
+                    <strong>Admin:</strong> Alles + Benutzerverwaltung
+                </small>
+            </div>
+            <div class="form-group">
+                <label>Standort</label>
+                {{ form.location_id(class="form-control") }}
+                <small class="text-muted" style="display: block; margin-top: 4px;">
+                    Fertigung und Bereichsleiter müssen einem Standort zugeordnet sein. Admins sehen alle Standorte.
+                </small>
+            </div>
+            <div class="form-group">
+                <label>Passwort{% if title == 'Benutzer bearbeiten' %} (leer lassen zum Beibehalten){% endif %}</label>
+                {{ form.password(class="form-control") }}
+            </div>
+            <div class="form-group">
+                <label style="display: flex; align-items: center; gap: 8px;">
+                    {{ form.is_active_user() }} Benutzer aktiv
+                </label>
+            </div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Speichern</button>
+                <a href="{{ url_for('user_list') }}" class="btn btn-secondary">Abbrechen</a>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

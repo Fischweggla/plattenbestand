@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+{% block title %}Änderungsprotokoll{% endblock %}
+{% block page_title %}Änderungsprotokoll{% endblock %}
+
+{% block content %}
+<div class="card">
+    <div class="card-body" style="padding: 0;">
+        <div class="table-container">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Zeitpunkt</th>
+                        <th>Benutzer</th>
+                        <th>Aktion</th>
+                        <th>Bereich</th>
+                        <th>Details</th>
+                        <th>IP-Adresse</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for log in logs.items %}
+                    <tr>
+                        <td style="white-space: nowrap;">{{ log.timestamp.strftime('%d.%m.%Y %H:%M:%S') }}</td>
+                        <td>{{ log.user.full_name if log.user else '-' }}</td>
+                        <td>
+                            {% if log.action == 'login' %}
+                            <span class="badge badge-active">Anmeldung</span>
+                            {% elif log.action == 'logout' %}
+                            <span class="badge badge-viewer">Abmeldung</span>
+                            {% elif log.action == 'create' %}
+                            <span class="badge badge-wg2">Erstellt</span>
+                            {% elif log.action == 'update' %}
+                            <span class="badge badge-wg1">Geändert</span>
+                            {% elif log.action == 'delete' %}
+                            <span class="badge badge-inactive">Gelöscht</span>
+                            {% elif log.action == 'import' %}
+                            <span class="badge badge-wg4">Import</span>
+                            {% else %}
+                            <span class="badge">{{ log.action }}</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ log.entity_type or '-' }}</td>
+                        <td style="max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+                            {{ log.details or '-' }}
+                        </td>
+                        <td class="text-muted">{{ log.ip_address or '-' }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" style="text-align: center; padding: 40px; color: #999;">
+                            Noch keine Einträge vorhanden.
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% if logs.pages > 1 %}
+<div class="pagination">
+    {% if logs.has_prev %}
+    <a href="?page={{ logs.prev_num }}">&#8592;</a>
+    {% endif %}
+    {% for page_num in logs.iter_pages(left_edge=1, right_edge=1, left_current=2, right_current=2) %}
+        {% if page_num %}
+            <a href="?page={{ page_num }}" class="{{ 'active' if page_num == logs.page }}">{{ page_num }}</a>
+        {% else %}
+            <span class="disabled">...</span>
+        {% endif %}
+    {% endfor %}
+    {% if logs.has_next %}
+    <a href="?page={{ logs.next_num }}">&#8594;</a>
+    {% endif %}
+</div>
+{% endif %}
+{% endblock %}

@@ -1,0 +1,309 @@
+{% extends "base.html" %}
+{% block title %}Dateneingabe{% endblock %}
+{% block page_title %}Dateneingabe{% endblock %}
+
+{% block head %}
+<style>
+    .wf-steps {
+        display: flex;
+        align-items: center;
+        gap: 0;
+        margin-bottom: 28px;
+        flex-wrap: wrap;
+    }
+    .wf-step {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px 16px;
+        background: var(--ibe-light-bg);
+        border: 1px solid var(--ibe-border);
+        font-size: 13px;
+        color: #999;
+        position: relative;
+        white-space: nowrap;
+    }
+    .wf-step:first-child { border-radius: 6px 0 0 6px; }
+    .wf-step:last-child { border-radius: 0 6px 6px 0; }
+    .wf-step .wf-num {
+        width: 24px; height: 24px; border-radius: 50%;
+        background: var(--ibe-border); color: #999;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 12px; font-weight: 700; flex-shrink: 0;
+    }
+    .wf-step.active { background: #fff; color: var(--ibe-dark); border-color: var(--ibe-blue); z-index: 1; }
+    .wf-step.active .wf-num { background: var(--ibe-blue); color: #fff; }
+    .wf-step.done { background: rgba(157,192,66,0.06); color: var(--ibe-dark); cursor: pointer; text-decoration: none; }
+    .wf-step.done:hover { background: rgba(157,192,66,0.12); }
+    .wf-step.done .wf-num { background: var(--ibe-green); color: #fff; }
+    .wf-step .wf-value { font-weight: 600; color: var(--ibe-dark); }
+    .wf-arrow { color: var(--ibe-border); font-size: 14px; margin: 0 -1px; z-index: 2; }
+
+    .choice-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 12px;
+    }
+    .choice-btn {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        padding: 16px 20px;
+        background: #fff;
+        border: 2px solid var(--ibe-border);
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: left;
+        font-family: 'Roboto', sans-serif;
+        transition: all 0.15s;
+        text-decoration: none;
+        color: inherit;
+    }
+    .choice-btn:hover {
+        border-color: var(--ibe-blue);
+        box-shadow: 0 2px 8px rgba(89,133,194,0.15);
+    }
+    .choice-btn:active { transform: scale(0.98); }
+    .choice-btn .choice-icon {
+        width: 44px; height: 44px; border-radius: 10px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px; font-weight: 700; flex-shrink: 0;
+    }
+    .choice-btn .choice-text strong { display: block; font-size: 15px; margin-bottom: 2px; }
+    .choice-btn .choice-text small { color: #999; font-size: 12px; }
+
+    .dim-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 12px;
+    }
+    .dim-btn {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 20px 16px;
+        background: #fff;
+        border: 2px solid var(--ibe-border);
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        font-family: 'Roboto', sans-serif;
+        transition: all 0.15s;
+        text-decoration: none;
+        color: var(--ibe-dark);
+    }
+    .dim-btn:hover { border-color: var(--ibe-blue); box-shadow: 0 2px 8px rgba(89,133,194,0.15); }
+    .dim-btn:active { transform: scale(0.98); }
+    .dim-btn .dim-value { font-size: 28px; font-weight: 700; line-height: 1; }
+    .dim-btn .dim-unit { font-size: 13px; color: #999; margin-top: 4px; }
+
+    .date-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+        gap: 10px;
+    }
+    .date-btn {
+        padding: 14px 16px;
+        background: #fff;
+        border: 2px solid var(--ibe-border);
+        border-radius: 8px;
+        cursor: pointer;
+        text-align: center;
+        font-family: 'Roboto', sans-serif;
+        font-size: 15px;
+        font-weight: 500;
+        color: var(--ibe-dark);
+        transition: all 0.15s;
+        text-decoration: none;
+        display: block;
+    }
+    .date-btn:hover { border-color: var(--ibe-blue); box-shadow: 0 2px 8px rgba(89,133,194,0.15); }
+    .date-btn small { display: block; font-size: 12px; color: #999; font-weight: 400; margin-top: 2px; }
+    .date-btn.today { border-color: var(--ibe-green); background: rgba(157,192,66,0.04); }
+
+    .step-title { font-size: 18px; color: var(--ibe-dark); margin-bottom: 16px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<!-- Workflow-Fortschritt -->
+{% set show_loc = locations | length > 1 %}
+{% set step_offset = 0 if show_loc else 1 %}
+<div class="wf-steps">
+    {# Standort #}
+    {% if show_loc %}
+    {% if step > 1 %}
+    <a href="{{ url_for('entry_select') }}" class="wf-step done">
+        <span class="wf-num">1</span>
+        <span class="wf-value">{{ sel_location.name }}</span>
+    </a>
+    {% else %}
+    <div class="wf-step active">
+        <span class="wf-num">1</span>
+        <span>Standort</span>
+    </div>
+    {% endif %}
+    <span class="wf-arrow">&#9654;</span>
+    {% endif %}
+
+    {# Datum #}
+    {% if step > 2 %}
+    <a href="{{ url_for('entry_select', location=sel_location.id) }}" class="wf-step done">
+        <span class="wf-num">{{ 2 - step_offset }}</span>
+        <span class="wf-value">{{ sel_date.strftime('%d.%m.%Y') }}</span>
+    </a>
+    {% elif step == 2 %}
+    <div class="wf-step active">
+        <span class="wf-num">{{ 2 - step_offset }}</span>
+        <span>Datum</span>
+    </div>
+    {% else %}
+    <div class="wf-step">
+        <span class="wf-num">{{ 2 - step_offset }}</span>
+        <span>Datum</span>
+    </div>
+    {% endif %}
+    <span class="wf-arrow">&#9654;</span>
+
+    {# Material #}
+    {% if step > 3 %}
+    <a href="{{ url_for('entry_select', location=sel_location.id, date=sel_date.isoformat()) }}" class="wf-step done">
+        <span class="wf-num">{{ 3 - step_offset }}</span>
+        <span class="wf-value">{{ sel_material.name[:20] }}{% if sel_material.name|length > 20 %}...{% endif %}</span>
+    </a>
+    {% elif step == 3 %}
+    <div class="wf-step active">
+        <span class="wf-num">{{ 3 - step_offset }}</span>
+        <span>Material</span>
+    </div>
+    {% else %}
+    <div class="wf-step">
+        <span class="wf-num">{{ 3 - step_offset }}</span>
+        <span>Material</span>
+    </div>
+    {% endif %}
+    <span class="wf-arrow">&#9654;</span>
+
+    {# Länge #}
+    {% if step > 4 %}
+    <a href="{{ url_for('entry_select', location=sel_location.id, date=sel_date.isoformat(), material=sel_material.id) }}" class="wf-step done">
+        <span class="wf-num">{{ 4 - step_offset }}</span>
+        <span class="wf-value">{{ sel_length }} mm</span>
+    </a>
+    {% elif step == 4 %}
+    <div class="wf-step active">
+        <span class="wf-num">{{ 4 - step_offset }}</span>
+        <span>Länge</span>
+    </div>
+    {% else %}
+    <div class="wf-step">
+        <span class="wf-num">{{ 4 - step_offset }}</span>
+        <span>Länge</span>
+    </div>
+    {% endif %}
+    <span class="wf-arrow">&#9654;</span>
+
+    {# Stärke #}
+    {% if step == 5 %}
+    <div class="wf-step active">
+        <span class="wf-num">{{ 5 - step_offset }}</span>
+        <span>Stärke</span>
+    </div>
+    {% else %}
+    <div class="wf-step">
+        <span class="wf-num">{{ 5 - step_offset }}</span>
+        <span>Stärke</span>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Schritt 1: Standort -->
+{% if step == 1 %}
+<h2 class="step-title">Standort wählen</h2>
+<div class="choice-grid">
+    {% for loc in locations %}
+    <a href="{{ url_for('entry_select', location=loc.id) }}" class="choice-btn">
+        <div class="choice-icon {{ ['blue', 'orange', 'green'][loop.index0 % 3] }}">
+            {{ loc.name[0] }}
+        </div>
+        <div class="choice-text">
+            <strong>{{ loc.name }}</strong>
+            <small>{{ loc.code }}</small>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Schritt 2: Datum -->
+{% if step == 2 %}
+<h2 class="step-title">Datum wählen</h2>
+<div class="date-grid">
+    {% for d in date_options %}
+    <a href="{{ url_for('entry_select', location=sel_location.id, date=d.date.isoformat()) }}"
+       class="date-btn {{ 'today' if d.is_today }}">
+        {{ d.date.strftime('%d.%m.%Y') }}
+        <small>{{ d.label }}</small>
+    </a>
+    {% endfor %}
+</div>
+<div style="margin-top: 16px; display: flex; align-items: center; gap: 12px;">
+    <span style="font-size: 14px; color: #666;">Anderes Datum:</span>
+    <input type="date" id="customDate" class="form-control" style="width: 180px;"
+           onchange="if(this.value) window.location.href='{{ url_for('entry_select', location=sel_location.id) }}&date=' + this.value;">
+</div>
+{% endif %}
+
+<!-- Schritt 3: Materialart -->
+{% if step == 3 %}
+<h2 class="step-title">Materialart wählen</h2>
+<div class="choice-grid">
+    {% for mt in material_types %}
+    <a href="{{ url_for('entry_select', location=sel_location.id, date=sel_date.isoformat(), material=mt.id) }}"
+       class="choice-btn">
+        <div class="choice-icon {{ 'blue' if 'Beschichtet' in mt.name and 'Un' not in mt.name else 'orange' if 'Unbeschichtet' in mt.name else 'green' }}">
+            {% if 'Styropor' in mt.name and 'gelb' not in mt.name %}S
+            {% elif 'PU' in mt.name %}P
+            {% elif 'Mineral' in mt.name %}M
+            {% elif 'Holz' in mt.name %}H
+            {% elif 'gelb' in mt.name or 'Perimeter' in mt.name %}B
+            {% else %}?{% endif %}
+        </div>
+        <div class="choice-text">
+            <strong>{{ mt.name }}</strong>
+            <small>{{ mt.products.count() }} Produkte</small>
+        </div>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Schritt 4: Länge -->
+{% if step == 4 %}
+<h2 class="step-title">Länge wählen</h2>
+<div class="dim-grid">
+    {% for l in mat_lengths %}
+    <a href="{{ url_for('entry_select', location=sel_location.id, date=sel_date.isoformat(), material=sel_material.id, length=l) }}"
+       class="dim-btn">
+        <span class="dim-value">{{ l }}</span>
+        <span class="dim-unit">mm Länge</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+
+<!-- Schritt 5: Stärke -->
+{% if step == 5 %}
+<h2 class="step-title">Stärke wählen</h2>
+<div class="dim-grid">
+    {% for s in length_strengths %}
+    <a href="{{ url_for('entry_select', location=sel_location.id, date=sel_date.isoformat(), material=sel_material.id, length=sel_length, strength=s) }}"
+       class="dim-btn">
+        <span class="dim-value">{{ s }}</span>
+        <span class="dim-unit">mm Stärke</span>
+    </a>
+    {% endfor %}
+</div>
+{% endif %}
+{% endblock %}

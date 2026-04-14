@@ -1,0 +1,79 @@
+{% extends "base.html" %}
+{% block title %}Dashboard{% endblock %}
+{% block page_title %}Dashboard{% endblock %}
+
+{% block content %}
+<div class="stats-grid">
+    {% for stat in location_stats %}
+    <div class="stat-card">
+        <div class="stat-icon {{ ['blue', 'orange', 'green'][loop.index0 % 3] }}">&#9634;</div>
+        <div class="stat-info">
+            <h3>{{ stat.location.name }}</h3>
+            <div class="stat-value">{{ "{:,}".format(stat.total_stock).replace(",", ".") }}</div>
+            <div class="stat-sub">
+                {% if stat.latest_date %}Stand: {{ stat.latest_date.strftime('%d.%m.%Y') }}{% else %}Keine Daten{% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    {% if location_stats | length > 1 %}
+    <div class="stat-card">
+        <div class="stat-icon dark">&#9733;</div>
+        <div class="stat-info">
+            <h3>Gesamt alle Werke</h3>
+            <div class="stat-value">{{ "{:,}".format(location_stats | sum(attribute='total_stock')).replace(",", ".") }}</div>
+            <div class="stat-sub">{{ location_stats | length }} Standorte</div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Schnellzugriff Dateneingabe -->
+<div class="card">
+    <div class="card-header">
+        <h2>Dateneingabe starten</h2>
+        <a href="{{ url_for('entry_select') }}" class="btn btn-primary btn-sm">&#9998; Neue Eingabe</a>
+    </div>
+    <div class="card-body">
+        <div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); margin-bottom: 0;">
+            {% for mt in material_types[:6] %}
+            <a href="{{ url_for('entry_select') }}" class="stat-card" style="text-decoration: none; color: inherit; transition: box-shadow 0.2s;">
+                <div class="stat-icon {{ ['blue', 'green', 'orange', 'dark', 'blue', 'green'][loop.index0 % 6] }}" style="width: 40px; height: 40px; font-size: 18px; border-radius: 8px;">
+                    {% if 'Styropor' in mt.name %}S{% elif 'PU' in mt.name %}P{% elif 'Mineral' in mt.name %}M{% else %}H{% endif %}
+                </div>
+                <div class="stat-info">
+                    <h3 style="font-size: 12px;">{{ mt.name }}</h3>
+                </div>
+            </a>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<!-- Quick Links -->
+<div class="stats-grid" style="grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));">
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-body" style="text-align: center; padding: 24px;">
+            <div style="font-size: 30px; margin-bottom: 6px;">&#9776;</div>
+            <h3 style="margin: 0 0 6px; font-size: 14px; color: var(--ibe-dark);">Bestandsliste</h3>
+            <a href="{{ url_for('inventory_list') }}" class="btn btn-secondary btn-sm">Ansehen</a>
+        </div>
+    </div>
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-body" style="text-align: center; padding: 24px;">
+            <div style="font-size: 30px; margin-bottom: 6px;">&#9636;</div>
+            <h3 style="margin: 0 0 6px; font-size: 14px; color: var(--ibe-dark);">Auswertungen</h3>
+            <a href="{{ url_for('reports') }}" class="btn btn-secondary btn-sm">Öffnen</a>
+        </div>
+    </div>
+    {% if current_user.role == 'admin' %}
+    <div class="card" style="margin-bottom: 0;">
+        <div class="card-body" style="text-align: center; padding: 24px;">
+            <div style="font-size: 30px; margin-bottom: 6px;">&#9201;</div>
+            <h3 style="margin: 0 0 6px; font-size: 14px; color: var(--ibe-dark);">Protokoll</h3>
+            <a href="{{ url_for('audit_log') }}" class="btn btn-secondary btn-sm">Ansehen</a>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
