@@ -28,9 +28,10 @@ Verwaltet Lagerbestände an drei Produktionsstandorten (Birkach, Brandis, Dinkel
 ### Benutzerverwaltung
 | Rolle            | Rechte                                                  |
 |------------------|---------------------------------------------------------|
-| **Fertigung**    | Eigenen Standort sehen, neue Werte eintragen            |
-| **Bereichsleiter** | Wie Fertigung + bestehende Daten ändern              |
-| **Admin**        | Alle Standorte, Benutzerverwaltung, Änderungsprotokoll  |
+| **Fertigung**      | Eigenen Standort sehen, neue Werte eintragen            |
+| **Beschichter**    | Wie Bereichsleiter (Daten sehen + ändern)               |
+| **Bereichsleiter** | Wie Fertigung + bestehende Daten ändern                 |
+| **Admin**          | Alle Standorte, Benutzerverwaltung, Änderungsprotokoll  |
 
 ### Audit-Log
 - Vollständiges Änderungsprotokoll aller Aktionen

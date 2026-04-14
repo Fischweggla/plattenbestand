@@ -16,6 +16,7 @@ class User(UserMixin, db.Model):
     full_name = db.Column(db.String(120), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='fertigung')
     # fertigung: eigenen Standort sehen + Werte eintragen
+    # beschichter: wie bereichsleiter (Daten sehen + ändern)
     # bereichsleiter: wie fertigung + Daten ändern
     # admin: alles + Benutzerverwaltung
     location_id = db.Column(db.Integer, db.ForeignKey('locations.id'), nullable=True)
@@ -46,7 +47,7 @@ class User(UserMixin, db.Model):
         return self.location_id == loc_id
 
     def can_edit(self):
-        return self.role in ('bereichsleiter', 'admin')
+        return self.role in ('beschichter', 'bereichsleiter', 'admin')
 
     def can_enter(self):
         return True  # Alle Rollen dürfen Werte eintragen

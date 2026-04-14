@@ -40,6 +40,8 @@
                             <span class="badge badge-admin">Admin</span>
                             {% elif user.role == 'bereichsleiter' %}
                             <span class="badge badge-editor">Bereichsleiter</span>
+                            {% elif user.role == 'beschichter' %}
+                            <span class="badge badge-editor">Beschichter</span>
                             {% else %}
                             <span class="badge badge-viewer">Fertigung</span>
                             {% endif %}

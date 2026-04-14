@@ -59,6 +59,7 @@ class UserForm(FlaskForm):
     full_name = StringField('Vollständiger Name', validators=[DataRequired()])
     role = SelectField('Rolle', choices=[
         ('fertigung', 'Fertigung'),
+        ('beschichter', 'Beschichter'),
         ('bereichsleiter', 'Bereichsleiter'),
         ('admin', 'Administrator'),
     ])
