@@ -53,6 +53,7 @@
         color: #666;
         font-variant-numeric: tabular-nums;
         min-width: 60px;
+        font-weight: 500;
     }
     .entry-table input[type="number"] {
         width: 72px;
@@ -70,7 +71,7 @@
         border-color: var(--ibe-blue);
         box-shadow: 0 0 0 2px rgba(89,133,194,0.2);
     }
-    .entry-table input.changed {
+    .entry-table input.has-value {
         background: rgba(89,133,194,0.08);
         border-color: var(--ibe-blue);
     }
@@ -103,12 +104,6 @@
 <form method="POST" id="entryForm">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
 
-    {% if is_edit and not current_user.can_edit() %}
-    <div class="alert alert-warning" style="margin-bottom: 16px;">
-        Diese Daten wurden bereits erfasst. Nur Bereichsleiter und Administratoren können bestehende Einträge ändern.
-    </div>
-    {% endif %}
-
     {% for length_mm, prods in products_by_length.items() %}
     <div class="card" style="margin-bottom: 16px;">
         <div class="card-body" style="padding: 0; overflow-x: auto;">
@@ -119,47 +114,44 @@
                     </tr>
                     <tr>
                         <th style="width: 60px;">Stärke</th>
-                        <th>Vorbestand</th>
+                        <th>Bestand</th>
                         <th>Zugang</th>
                         <th>Abgang</th>
                         <th>Abfall</th>
-                        <th style="min-width: 80px;">Summe</th>
+                        <th style="min-width: 80px;">Neuer Bestand</th>
                     </tr>
                 </thead>
                 <tbody>
                     {% for product in prods %}
-                    {% set inv = existing.get(product.id) %}
-                    {% set prev_summe = prev_data.get(product.id, 0) %}
-                    {% set beginn_val = inv.beginn if inv else prev_summe %}
-                    {% set readonly = is_edit and not current_user.can_edit() %}
+                    {% set stock = current_stock.get(product.id, 0) %}
                     <tr>
                         <td class="strength-cell">{{ product.strength_mm }}</td>
-                        <td class="beginn-cell" id="beginn_{{ product.id }}" data-beginn="{{ beginn_val }}">
-                            {{ beginn_val }}
+                        <td class="beginn-cell" id="beginn_{{ product.id }}" data-beginn="{{ stock }}">
+                            {{ stock }}
                         </td>
                         <td>
                             <input type="number" name="p_{{ product.id }}_zugang"
-                                   value="{{ inv.zugang if inv else 0 }}"
+                                   value="" placeholder="0"
                                    class="entry-input" data-pid="{{ product.id }}" data-field="zugang"
-                                   {{ 'readonly' if readonly }} min="0" step="1" inputmode="numeric" pattern="[0-9]*"
-                                   oninput="forceInt(this); calcSumme({{ product.id }}); markChanged(this);">
+                                   min="0" step="1" inputmode="numeric" pattern="[0-9]*"
+                                   oninput="forceInt(this); calcSumme({{ product.id }}); highlightInput(this);">
                         </td>
                         <td>
                             <input type="number" name="p_{{ product.id }}_abgang"
-                                   value="{{ inv.abgang if inv else 0 }}"
+                                   value="" placeholder="0"
                                    class="entry-input" data-pid="{{ product.id }}" data-field="abgang"
-                                   {{ 'readonly' if readonly }} min="0" step="1" inputmode="numeric" pattern="[0-9]*"
-                                   oninput="forceInt(this); calcSumme({{ product.id }}); markChanged(this);">
+                                   min="0" step="1" inputmode="numeric" pattern="[0-9]*"
+                                   oninput="forceInt(this); calcSumme({{ product.id }}); highlightInput(this);">
                         </td>
                         <td>
                             <input type="number" name="p_{{ product.id }}_abfall"
-                                   value="{{ inv.abfall if inv else 0 }}"
+                                   value="" placeholder="0"
                                    class="entry-input" data-pid="{{ product.id }}" data-field="abfall"
-                                   {{ 'readonly' if readonly }} min="0" step="1" inputmode="numeric" pattern="[0-9]*"
-                                   oninput="forceInt(this); calcSumme({{ product.id }}); markChanged(this);">
+                                   min="0" step="1" inputmode="numeric" pattern="[0-9]*"
+                                   oninput="forceInt(this); calcSumme({{ product.id }}); highlightInput(this);">
                         </td>
                         <td class="summe-cell" id="summe_{{ product.id }}">
-                            {% if inv %}{{ inv.summe }}{% else %}{{ beginn_val }}{% endif %}
+                            {{ stock }}
                         </td>
                     </tr>
                     {% endfor %}
@@ -172,12 +164,8 @@
     <div class="entry-actions">
         <a href="{{ url_for('entry_select') }}" class="btn btn-secondary">Zurück</a>
         <div class="d-flex gap-2 align-center">
-            <span id="changeCount" class="text-muted" style="font-size: 13px;"></span>
-            {% if not (is_edit and not current_user.can_edit()) %}
-            <button type="submit" class="btn btn-primary" id="saveBtn">
-                {{ 'Änderungen speichern' if is_edit else 'Daten speichern' }}
-            </button>
-            {% endif %}
+            <span id="changeInfo" class="text-muted" style="font-size: 13px;"></span>
+            <button type="submit" class="btn btn-primary" id="saveBtn">Buchung speichern</button>
         </div>
     </div>
 </form>
@@ -192,7 +180,6 @@ function forceInt(input) {
 
 document.addEventListener('keydown', function(e) {
     if (!e.target.classList.contains('entry-input')) return;
-    // Erlaubt: Ziffern, Backspace, Delete, Tab, Enter, Pfeiltasten, Home, End, Strg+A/C/V/X
     const allowed = ['Backspace','Delete','Tab','Enter','ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End'];
     if (allowed.includes(e.key)) return;
     if ((e.ctrlKey || e.metaKey) && ['a','c','v','x'].includes(e.key.toLowerCase())) return;
@@ -207,17 +194,17 @@ function calcSumme(pid) {
     const cell = document.getElementById(`summe_${pid}`);
     cell.textContent = summe;
     cell.classList.toggle('negative', summe < 0);
+    updateInfo();
 }
 
-function markChanged(input) {
-    input.classList.add('changed');
-    updateChangeCount();
+function highlightInput(input) {
+    input.classList.toggle('has-value', input.value !== '' && input.value !== '0');
 }
 
-function updateChangeCount() {
-    const count = document.querySelectorAll('.entry-input.changed').length;
-    const el = document.getElementById('changeCount');
-    el.textContent = count > 0 ? `${count} Feld(er) geändert` : '';
+function updateInfo() {
+    const inputs = [...document.querySelectorAll('.entry-input')];
+    const filled = inputs.filter(i => i.value !== '' && i.value !== '0').length;
+    document.getElementById('changeInfo').textContent = filled > 0 ? `${filled} Wert(e) eingetragen` : '';
 }
 
 // Enter springt zum nächsten Feld
@@ -230,12 +217,6 @@ document.querySelectorAll('.entry-input').forEach(input => {
             if (idx < inputs.length - 1) inputs[idx + 1].focus();
         }
     });
-});
-
-// Initial Summen berechnen
-document.querySelectorAll('.summe-cell').forEach(cell => {
-    const pid = cell.id.replace('summe_', '');
-    calcSumme(pid);
 });
 </script>
 {% endblock %}

@@ -337,81 +337,81 @@ def entry_form(location_id, material_id, date_str):
             prev_data[inv.product_id] = inv.summe
 
     if request.method == 'POST':
-        # Berechtigungsprüfung für Änderungen
-        is_new_entry = not any(existing.values())
-        if not is_new_entry and not current_user.can_edit():
-            flash('Nur Bereichsleiter und Admins dürfen bestehende Daten ändern.', 'danger')
-            return redirect(url_for('entry_form', location_id=location_id,
-                                    material_id=material_id, date_str=date_str))
-
         count = 0
         for product in products:
             key = f'p_{product.id}'
-            abgang = request.form.get(f'{key}_abgang', 0, type=int)
             zugang = request.form.get(f'{key}_zugang', 0, type=int)
+            abgang = request.form.get(f'{key}_abgang', 0, type=int)
             abfall = request.form.get(f'{key}_abfall', 0, type=int)
 
-            # Beginn = letzte Summe (automatisch)
-            beginn = prev_data.get(product.id, 0)
-            if product.id in existing:
-                beginn = existing[product.id].beginn
-            summe = beginn + zugang - abgang - abfall
+            if not any([zugang, abgang, abfall]):
+                continue
 
-            if any([abgang, zugang, abfall]) or product.id in existing:
-                inv = existing.get(product.id)
-                if inv:
-                    old = {'abgang': inv.abgang, 'zugang': inv.zugang,
-                           'abfall': inv.abfall, 'summe': inv.summe}
-                    inv.beginn = beginn
-                    inv.abgang = abgang
-                    inv.zugang = zugang
-                    inv.abfall = abfall
-                    inv.summe = summe
-                    new = {'abgang': abgang, 'zugang': zugang,
-                           'abfall': abfall, 'summe': summe}
-                    if old != new:
-                        log_action('update', 'inventory', inv.id,
-                                   {'product': product.label, 'old': old, 'new': new})
-                else:
-                    inv = Inventory(
-                        product_id=product.id,
-                        location_id=location_id,
-                        date=entry_date,
-                        beginn=beginn,
-                        abgang=abgang,
-                        zugang=zugang,
-                        abfall=abfall,
-                        summe=summe,
-                    )
-                    db.session.add(inv)
-                    log_action('create', 'inventory', None,
-                               {'product': product.label, 'values': {
-                                   'beginn': beginn, 'abgang': abgang,
-                                   'zugang': zugang, 'abfall': abfall, 'summe': summe}})
-                count += 1
+            # Aktuellen Bestand holen (letzter Eintrag für dieses Produkt+Standort)
+            last_inv = (
+                Inventory.query
+                .filter_by(product_id=product.id, location_id=location_id)
+                .order_by(Inventory.date.desc(), Inventory.id.desc())
+                .first()
+            )
+            vorbestand = last_inv.summe if last_inv else 0
+            neue_summe = vorbestand + zugang - abgang - abfall
+
+            # Neue Buchung als eigenen Eintrag speichern
+            inv = Inventory(
+                product_id=product.id,
+                location_id=location_id,
+                date=entry_date,
+                beginn=vorbestand,
+                zugang=zugang,
+                abgang=abgang,
+                abfall=abfall,
+                summe=neue_summe,
+            )
+            db.session.add(inv)
+            log_action('create', 'inventory', None, {
+                'product': product.label,
+                'vorbestand': vorbestand,
+                'zugang': zugang, 'abgang': abgang, 'abfall': abfall,
+                'summe': neue_summe,
+            })
+            count += 1
 
         db.session.commit()
-        flash(f'{count} Einträge gespeichert.', 'success')
+        if count:
+            flash(f'{count} Buchung(en) gespeichert.', 'success')
+        else:
+            flash('Keine Werte eingegeben.', 'info')
+
+        # Redirect mit gleichen Parametern — Formular ist dann wieder leer
         return redirect(url_for('entry_form', location_id=location_id,
-                                material_id=material_id, date_str=date_str))
+                                material_id=material_id, date_str=date_str,
+                                length=sel_length, strength=sel_strength))
+
+    # Aktuellen Bestand pro Produkt laden (letzter Eintrag, egal welches Datum)
+    current_stock = {}
+    for product in products:
+        last_inv = (
+            Inventory.query
+            .filter_by(product_id=product.id, location_id=location_id)
+            .order_by(Inventory.date.desc(), Inventory.id.desc())
+            .first()
+        )
+        current_stock[product.id] = last_inv.summe if last_inv else 0
 
     # Produkte nach Länge gruppieren
     products_by_length = {}
     for p in products:
         products_by_length.setdefault(p.length_mm, []).append(p)
 
-    # Alle vorkommenden Stärken sammeln
-    all_strengths = sorted(set(p.strength_mm for p in products))
-
     return render_template('entry_form.html',
                            location=location, material=material,
                            entry_date=entry_date,
                            products=products,
                            products_by_length=products_by_length,
-                           all_strengths=all_strengths,
-                           existing=existing,
-                           prev_data=prev_data,
-                           is_edit=bool(existing))
+                           current_stock=current_stock,
+                           sel_length=sel_length,
+                           sel_strength=sel_strength)
 
 
 # --- Bestandsübersicht ---
@@ -451,45 +451,36 @@ def inventory_list():
             date_sub = date_sub.filter(Inventory.location_id == location_id)
         selected_date_obj = date_sub.scalar()
 
-    # Daten laden - bei "Gesamt" über alle Standorte summieren
-    query = (
-        db.session.query(
-            Product.material_type_id,
-            Product.length_mm,
-            Product.strength_mm,
-            db.func.sum(Inventory.summe).label('total_summe'),
-            db.func.sum(Inventory.zugang).label('total_zugang'),
-            db.func.sum(Inventory.abgang).label('total_abgang'),
-            db.func.sum(Inventory.abfall).label('total_abfall'),
-            db.func.sum(Inventory.beginn).label('total_beginn'),
-        )
-        .join(Product, Inventory.product_id == Product.id)
-        .join(Location, Inventory.location_id == Location.id)
-    )
+    # Aktuellen Bestand laden: letzter Eintrag (höchste ID) pro Produkt+Standort
+    # Subquery: max(id) pro product_id + location_id
+    latest_sub = db.session.query(
+        Inventory.product_id,
+        Inventory.location_id,
+        db.func.max(Inventory.id).label('max_id'),
+    ).group_by(Inventory.product_id, Inventory.location_id).subquery()
 
-    if selected_date_obj:
-        query = query.filter(Inventory.date == selected_date_obj)
+    query = (
+        db.session.query(Inventory)
+        .join(latest_sub, Inventory.id == latest_sub.c.max_id)
+        .join(Product, Inventory.product_id == Product.id)
+    )
 
     if current_user.role != 'admin':
         query = query.filter(Inventory.location_id == current_user.location_id)
     elif location_id:
         query = query.filter(Inventory.location_id == location_id)
 
-    query = query.group_by(Product.material_type_id, Product.length_mm, Product.strength_mm)
-    rows = query.all()
+    latest_entries = query.all()
 
-    # Daten nach Materialart strukturieren
-    # mat_data[mat_id] = { (length, strength): {summe, zugang, abgang, abfall, beginn} }
+    # Bei "Gesamt" (kein Standort gewählt): Summe über Standorte pro Produkt
     mat_data = {}
-    for r in rows:
-        mat_data.setdefault(r.material_type_id, {})
-        mat_data[r.material_type_id][(r.length_mm, r.strength_mm)] = {
-            'summe': r.total_summe or 0,
-            'zugang': r.total_zugang or 0,
-            'abgang': r.total_abgang or 0,
-            'abfall': r.total_abfall or 0,
-            'beginn': r.total_beginn or 0,
-        }
+    for inv in latest_entries:
+        p = inv.product
+        key = (p.length_mm, p.strength_mm)
+        mat_data.setdefault(p.material_type_id, {})
+        if key not in mat_data[p.material_type_id]:
+            mat_data[p.material_type_id][key] = {'summe': 0}
+        mat_data[p.material_type_id][key]['summe'] += inv.summe
 
     # Pro Materialart: verfügbare Längen und Stärken
     mat_grid = []

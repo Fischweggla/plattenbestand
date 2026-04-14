@@ -104,7 +104,7 @@ class Product(db.Model):
 
 
 class Inventory(db.Model):
-    """Ein Bestandseintrag: Produkt + Standort + Datum + Werte."""
+    """Eine Buchung: Jede Eingabe erzeugt einen neuen Eintrag. summe = aktueller Bestand danach."""
     __tablename__ = 'inventory'
 
     id = db.Column(db.Integer, primary_key=True)
@@ -112,22 +112,15 @@ class Inventory(db.Model):
     location_id = db.Column(db.Integer, db.ForeignKey('locations.id'), nullable=False, index=True)
     date = db.Column(db.Date, nullable=False, index=True)
 
-    beginn = db.Column(db.Integer, default=0)
-    abgang = db.Column(db.Integer, default=0)
+    beginn = db.Column(db.Integer, default=0)   # Bestand vor dieser Buchung
     zugang = db.Column(db.Integer, default=0)
+    abgang = db.Column(db.Integer, default=0)
     abfall = db.Column(db.Integer, default=0)
-    summe = db.Column(db.Integer, default=0)
+    summe = db.Column(db.Integer, default=0)     # Bestand nach dieser Buchung
 
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
-    updated_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc),
-                           onupdate=lambda: datetime.now(timezone.utc))
 
     location = db.relationship('Location', backref='inventories')
-
-    __table_args__ = (
-        db.UniqueConstraint('product_id', 'location_id', 'date',
-                            name='uq_inventory_entry'),
-    )
 
 
 class PlanEntry(db.Model):
