@@ -54,6 +54,12 @@ class LoginForm(FlaskForm):
     password = PasswordField('Passwort', validators=[DataRequired()])
 
 
+def coerce_int_or_none(val):
+    if val is None or val == '' or val == 'None':
+        return None
+    return int(val)
+
+
 class UserForm(FlaskForm):
     username = StringField('Benutzername', validators=[DataRequired(), Length(min=3, max=80)])
     email = StringField('E-Mail', validators=[DataRequired(), Email()])
@@ -64,7 +70,7 @@ class UserForm(FlaskForm):
         ('bereichsleiter', 'Bereichsleiter'),
         ('admin', 'Administrator'),
     ])
-    location_id = SelectField('Standort', coerce=int)
+    location_id = SelectField('Standort', coerce=coerce_int_or_none)
     password = PasswordField('Passwort')
     is_active_user = BooleanField('Aktiv', default=True)
 
@@ -976,27 +982,35 @@ def user_create():
         return redirect(url_for('dashboard'))
 
     form = UserForm()
-    form.location_id.choices = [(0, '-- Alle Standorte --')] + [
+    form.location_id.choices = [(None, '-- Alle Standorte --')] + [
         (l.id, l.name) for l in Location.query.all()
     ]
     if form.validate_on_submit():
         if not form.password.data:
             flash('Passwort ist erforderlich.', 'danger')
             return render_template('user_form.html', form=form, title='Neuer Benutzer')
-        user = User(
-            username=form.username.data,
-            email=form.email.data,
-            full_name=form.full_name.data,
-            role=form.role.data,
-            location_id=form.location_id.data if form.location_id.data != 0 else None,
-            is_active_user=form.is_active_user.data,
-        )
-        user.set_password(form.password.data)
-        db.session.add(user)
-        db.session.commit()
-        log_action('create', 'user', user.id, {'username': user.username})
-        flash(f'Benutzer {user.username} angelegt.', 'success')
-        return redirect(url_for('user_list'))
+        try:
+            user = User(
+                username=form.username.data,
+                email=form.email.data,
+                full_name=form.full_name.data,
+                role=form.role.data,
+                location_id=form.location_id.data,
+                is_active_user=form.is_active_user.data,
+            )
+            user.set_password(form.password.data)
+            db.session.add(user)
+            db.session.commit()
+            log_action('create', 'user', user.id, {'username': user.username})
+            flash(f'Benutzer {user.username} angelegt.', 'success')
+            return redirect(url_for('user_list'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Fehler: {str(e)}', 'danger')
+    elif form.is_submitted():
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f'{getattr(form, field).label.text}: {error}', 'danger')
 
     return render_template('user_form.html', form=form, title='Neuer Benutzer')
 
@@ -1014,25 +1028,33 @@ def user_edit(user_id):
         return redirect(url_for('user_list'))
 
     form = UserForm(obj=user)
-    form.location_id.choices = [(0, '-- Alle Standorte --')] + [
+    form.location_id.choices = [(None, '-- Alle Standorte --')] + [
         (l.id, l.name) for l in Location.query.all()
     ]
     if not form.is_submitted():
-        form.location_id.data = user.location_id or 0
+        form.location_id.data = user.location_id
 
     if form.validate_on_submit():
-        user.username = form.username.data
-        user.email = form.email.data
-        user.full_name = form.full_name.data
-        user.role = form.role.data
-        user.location_id = form.location_id.data if form.location_id.data != 0 else None
-        user.is_active_user = form.is_active_user.data
-        if form.password.data:
-            user.set_password(form.password.data)
-        db.session.commit()
-        log_action('update', 'user', user.id, {'username': user.username})
-        flash('Benutzer aktualisiert.', 'success')
-        return redirect(url_for('user_list'))
+        try:
+            user.username = form.username.data
+            user.email = form.email.data
+            user.full_name = form.full_name.data
+            user.role = form.role.data
+            user.location_id = form.location_id.data
+            user.is_active_user = form.is_active_user.data
+            if form.password.data:
+                user.set_password(form.password.data)
+            db.session.commit()
+            log_action('update', 'user', user.id, {'username': user.username})
+            flash('Benutzer aktualisiert.', 'success')
+            return redirect(url_for('user_list'))
+        except Exception as e:
+            db.session.rollback()
+            flash(f'Fehler: {str(e)}', 'danger')
+    elif form.is_submitted():
+        for field, errors in form.errors.items():
+            for error in errors:
+                flash(f'{getattr(form, field).label.text}: {error}', 'danger')
 
     return render_template('user_form.html', form=form, title='Benutzer bearbeiten')
 
